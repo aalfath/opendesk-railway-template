@@ -1,3 +1,5 @@
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/opendesk?utm_medium=integration&utm_source=button&utm_campaign=opendesk)
+
 # opendesk on Railway
 
 One-click Railway template for [opendesk](https://github.com/useopendesk/opendesk), the open-source helpdesk: a shared inbox for email and live chat, assignments, a help center and an embeddable chat widget.
@@ -40,7 +42,7 @@ Optional, add them to `opendesk` when you need them:
 
 ## Sizing
 
-Fits Railway's Free plan limits (0.5 GB RAM per service, one volume plus one bucket). Tested with every service capped at 0.5 GB / 1 vCPU.
+Fits Railway's Free plan limits (0.5 GB RAM per service, one volume plus one bucket). Tested on Railway with every service capped at 0.5 GB / 1 vCPU: opendesk peaked at about 295 MB with three 20 MB uploads at once, realtime idles at about 150 MB.
 
 ## Not included
 
