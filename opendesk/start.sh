@@ -45,7 +45,7 @@ if [ -n "${SMTP_HOST:-}" ]; then
 else
   export MAIL_DRIVER="${MAIL_DRIVER:-log}"
 fi
-[ -n "${MAIL_FROM:-}" ] || export MAIL_FROM="opendesk <notifications@$(host_of "$OPENDESK_URL")>"
+[ -n "${MAIL_FROM:-}" ] || export MAIL_FROM="opendesk <notifications@$(host_of "$OPENDESK_URL" | sed "s/:[0-9]*$//")>"
 for v in SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_HOST S3_ENDPOINT; do
   eval "val=\${$v:-}"; [ -n "$val" ] || unset "$v"
 done
@@ -66,7 +66,19 @@ echo "$ADMIN_EMAIL" | grep -Eq '^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+
 [ "${#ADMIN_PASSWORD}" -ge 12 ] || die "ADMIN_PASSWORD must be at least 12 characters"
 case "$ADMIN_PASSWORD" in *[\"\\]*) die "ADMIN_PASSWORD must not contain quotes or backslashes";; esac
 
-if /opendesk admin list 2>/dev/null | grep -qiF "$ADMIN_EMAIL"; then
+# Migrations first (idempotent, guarded by an advisory lock), retried while Postgres or
+# its private DNS name is still coming up. Then the admin list tells first boot apart.
+i=0
+until /opendesk migrate >/tmp/migrate.log 2>&1; do
+  i=$((i + 1))
+  [ "$i" -lt 60 ] || { cat /tmp/migrate.log >&2; die "database not reachable after 3 minutes"; }
+  [ "$i" -eq 1 ] && log "waiting for the database: $(tail -n 1 /tmp/migrate.log | cut -c1-160)"
+  sleep 3
+done
+log "database ready, migrations applied"
+export AUTO_MIGRATE=false
+admins=$(/opendesk admin list) || die "could not list instance admins"
+if echo "$admins" | grep -qiF "$ADMIN_EMAIL"; then
   log "owner $ADMIN_EMAIL already set up"
 else
   log "first boot: creating the owner account on a loopback-only instance"
@@ -77,7 +89,7 @@ else
   i=0
   until wget -q -T 3 -O /dev/null "http://127.0.0.1:$BOOT_PORT/readyz" 2>/dev/null; do
     kill -0 "$boot_pid" 2>/dev/null || die "the bootstrap instance exited (see the log above)"
-    i=$((i + 1)); [ "$i" -lt 280 ] || { kill "$boot_pid"; die "the bootstrap instance did not get ready in 280 s"; }
+    i=$((i + 1)); [ "$i" -lt 120 ] || { kill "$boot_pid"; die "the bootstrap instance did not get ready in 120 s"; }
     sleep 1
   done
   body=$(printf '{"email":"%s","password":"%s","name":"Owner"}' "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
